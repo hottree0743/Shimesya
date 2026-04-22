@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>大島紬 締め者管理システム</title>
+    <title>大島紬 締め者管理 v4</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -21,9 +21,10 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- 日曜除外の計算ロジック ---
+        // --- 日曜除外ロジック ---
         const addWorkDays = (startDate, daysToAdd) => {
             let date = new Date(startDate);
+            if (isNaN(date.getTime())) date = new Date();
             let addedDays = 0;
             while (addedDays < daysToAdd) {
                 date.setDate(date.getDate() + 1);
@@ -35,8 +36,8 @@
         function App() {
             const [tab, setTab] = useState('進行');
             const [records, setRecords] = useState([]);
-            const [editingId, setEditingId] = useState(null); // 編集中のIDを管理
-            
+            const [editingId, setEditingId] = useState(null);
+
             const initialForm = {
                 gara_ban: '', gara_main_type: '白', gara_keito_type: '一元', gara_kousei_type: '総絣',
                 gara_name: '', itobetsu: '絣緯', shinasu: '', sagari: '', maruki: '', shime_name: '',
@@ -45,16 +46,18 @@
             };
             const [formData, setFormData] = useState(initialForm);
 
+            // データ読み込み
             useEffect(() => {
-                const saved = localStorage.getItem('oshimatsumugi-v3');
+                const saved = localStorage.getItem('oshimatsumugi-v4');
                 if (saved) setRecords(JSON.parse(saved));
             }, []);
 
+            // データ保存
             useEffect(() => {
-                localStorage.setItem('oshimatsumugi-v3', JSON.stringify(records));
+                localStorage.setItem('oshimatsumugi-v4', JSON.stringify(records));
             }, [records]);
 
-            // --- 難易度判定ロジック ---
+            // 難易度判定
             const determineDifficulty = (data) => {
                 if (data.nuki_rank === '高') return { label: '高', color: 'bg-red-500' };
                 if (data.nuki_rank === '低') return { label: '低', color: 'bg-green-500' };
@@ -64,10 +67,10 @@
                 return { label: '中', color: 'bg-yellow-500' };
             };
 
-            // --- 予定日の算出 (締め者×糸別ごとの平均日数) ---
-            const getScheduledDate = (shimeName, itobetsu, startDate) => {
+            // 予定日計算
+            const calculateScheduledDate = (shimeName, itobetsu, startDate) => {
                 const pastData = records.filter(r => r.shime_name === shimeName && r.itobetsu === itobetsu && r.completion_date);
-                let avgDays = 10; // 実績がない場合の初期値
+                let avgDays = 10;
                 if (pastData.length > 0) {
                     const totalDays = pastData.reduce((sum, r) => {
                         const s = new Date(r.itowatashi_date);
@@ -80,17 +83,20 @@
             };
 
             const handleSave = () => {
-                if (!formData.shime_name || !formData.gara_name) return alert("締め者名と柄名は必須です");
+                if (!formData.shime_name || !formData.gara_name) {
+                    alert("締め者名と柄名は必須項目です。");
+                    return;
+                }
                 
                 const diff = determineDifficulty(formData);
-                const scheduledDate = getScheduledDate(formData.shime_name, formData.itobetsu, formData.itowatashi_date);
+                const sched = calculateScheduledDate(formData.shime_name, formData.itobetsu, formData.itowatashi_date);
                 
                 const newRecord = {
                     ...formData,
                     id: editingId || Date.now(),
                     difficulty: diff.label,
                     difficultyColor: diff.color,
-                    scheduled_date: scheduledDate,
+                    scheduled_date: sched,
                     full_gara_type: `${formData.gara_main_type} / ${formData.gara_keito_type} / ${formData.gara_kousei_type}`
                 };
 
@@ -102,7 +108,7 @@
 
                 setFormData(initialForm);
                 setEditingId(null);
-                alert(editingId ? "修正しました" : "保存しました");
+                alert("保存が完了しました。進行タブを確認してください。");
                 setTab('進行');
             };
 
@@ -112,42 +118,56 @@
                 setTab('管理');
             };
 
-            return (
-                <div className="max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col pb-10">
-                    <header className="bg-slate-800 text-white p-4 text-center font-bold">締め者管理システム</header>
+            // 進行中のフィルターロジックを強化
+            const activeRecords = records.filter(r => r.completion_date === "" || r.completion_date === null);
 
-                    <nav className="flex bg-slate-100 border-b overflow-x-auto text-xs sticky top-0 z-10">
+            return (
+                <div className="max-w-md mx-auto min-h-screen bg-white shadow-xl flex flex-col">
+                    <header className="bg-slate-800 text-white p-4 text-center font-bold">
+                        締め者管理 v4.0 <span className="text-[10px] bg-red-600 px-1 rounded">最新</span>
+                    </header>
+
+                    <nav className="flex bg-slate-100 border-b overflow-x-auto text-xs sticky top-0 z-10 shadow-sm">
                         {['進行', '管理', '履歴', '工賃計算'].map(t => (
                             <button key={t} onClick={() => setTab(t)}
-                                className={`flex-1 py-4 whitespace-nowrap px-2 ${tab === t ? 'bg-white text-blue-700 border-b-2 border-blue-700 font-bold' : 'text-gray-500'}`}>
+                                className={`flex-1 py-4 whitespace-nowrap px-2 font-bold ${tab === t ? 'bg-white text-blue-700 border-b-2 border-blue-700' : 'text-gray-400'}`}>
                                 {t}
                             </button>
                         ))}
                     </nav>
 
-                    <main className="flex-1 p-4 overflow-y-auto">
+                    <main className="flex-1 p-4 overflow-y-auto pb-20">
                         {tab === '進行' && (
                             <div className="space-y-4">
-                                <h2 className="text-sm font-bold text-slate-500 border-l-4 border-slate-800 pl-2 mb-4">進行中の案件（最大4件）</h2>
-                                {records.filter(r => !r.completion_date).slice(0, 4).map(r => (
-                                    <div key={r.id} className="bg-white border rounded-lg p-4 shadow-sm relative">
-                                        <div className={`absolute top-0 right-0 px-2 py-1 text-white text-[10px] rounded-bl-lg ${r.difficultyColor}`}>難易度:{r.difficulty}</div>
-                                        <div className="font-bold text-lg text-slate-800">{r.shime_name} <span className="text-xs font-normal">さん</span></div>
-                                        <div className="text-xs space-y-1 mt-2 text-slate-600">
-                                            <p>柄: {r.gara_name} ({r.full_gara_type})</p>
-                                            <p>糸別: {r.itobetsu}</p>
-                                            <p className="text-blue-600 font-bold">予定: {r.scheduled_date} <span className="font-normal text-[10px]">(日除外)</span></p>
-                                            {r.note && <p className="bg-gray-50 p-1 mt-1 text-[10px]">備考: {r.note}</p>}
-                                        </div>
+                                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">進行中の案件 ({activeRecords.length}件)</h2>
+                                {activeRecords.length === 0 ? (
+                                    <div className="text-center py-20 border-2 border-dashed border-gray-100 rounded-xl text-gray-300">
+                                        進行中のデータはありません
                                     </div>
-                                ))}
+                                ) : (
+                                    activeRecords.slice(0, 4).map(r => (
+                                        <div key={r.id} className="bg-white border rounded-xl p-4 shadow-sm relative border-l-8 border-slate-800">
+                                            <div className={`absolute top-0 right-0 px-2 py-1 text-white text-[10px] rounded-bl-lg font-bold ${r.difficultyColor}`}>
+                                                難易度:{r.difficulty}
+                                            </div>
+                                            <div className="font-bold text-lg text-slate-800 underline decoration-slate-200 decoration-4">{r.shime_name}</div>
+                                            <div className="text-xs space-y-1 mt-3 text-slate-600">
+                                                <p><span className="text-slate-400">柄名:</span> {r.gara_name}</p>
+                                                <p><span className="text-slate-400">型式:</span> {r.full_gara_type}</p>
+                                                <p><span className="text-slate-400">ムシロ:</span> {r.itobetsu}</p>
+                                                <div className="mt-2 p-2 bg-blue-50 rounded text-blue-700 font-bold flex justify-between">
+                                                    <span>予定日: {r.scheduled_date}</span>
+                                                    <span className="text-[9px] font-normal">※日曜除外</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         )}
 
                         {tab === '管理' && (
-                            <div className="animate-fade-in">
-                                <h2 className="text-sm font-bold text-slate-800 mb-2">{editingId ? "【編集モード】" : "【新規登録】"}</h2>
-                                
+                            <div className="animate-in slide-in-from-bottom-2 duration-300">
                                 <label className="input-label">柄番</label>
                                 <input className="form-input" value={formData.gara_ban} onChange={e=>setFormData({...formData, gara_ban: e.target.value})} />
 
@@ -156,13 +176,13 @@
 
                                 <label className="input-label">柄の種類 (⚪︎大島 / 経糸構成 / 柄構成)</label>
                                 <div className="grid grid-cols-3 gap-1">
-                                    <select className="form-input text-xs" value={formData.gara_main_type} onChange={e=>setFormData({...formData, gara_main_type: e.target.value})}>
+                                    <select className="form-input text-[10px]" value={formData.gara_main_type} onChange={e=>setFormData({...formData, gara_main_type: e.target.value})}>
                                         {['白','ベージュ','丸式','風雅','脱色','泥','白泥'].map(v=><option key={v}>{v}</option>)}
                                     </select>
-                                    <select className="form-input text-xs" value={formData.gara_keito_type} onChange={e=>setFormData({...formData, gara_keito_type: e.target.value})}>
+                                    <select className="form-input text-[10px]" value={formData.gara_keito_type} onChange={e=>setFormData({...formData, gara_keito_type: e.target.value})}>
                                         {['一元','地紋'].map(v=><option key={v}>{v}</option>)}
                                     </select>
-                                    <select className="form-input text-xs" value={formData.gara_kousei_type} onChange={e=>setFormData({...formData, gara_kousei_type: e.target.value})}>
+                                    <select className="form-input text-[10px]" value={formData.gara_kousei_type} onChange={e=>setFormData({...formData, gara_kousei_type: e.target.value})}>
                                         {['総絣','タフコ','ユタフコ'].map(v=><option key={v}>{v}</option>)}
                                     </select>
                                 </div>
@@ -199,40 +219,37 @@
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2">
-                                    <div><label className="input-label">糸渡し日</label><input type="date" className="form-input text-xs" value={formData.itowatashi_date} onChange={e=>setFormData({...formData, itowatashi_date: e.target.value})} /></div>
-                                    <div><label className="input-label font-normal text-blue-600">締め上がり日 (完成時に入力)</label><input type="date" className="form-input text-xs border-blue-200" value={formData.completion_date} onChange={e=>setFormData({...formData, completion_date: e.target.value})} /></div>
+                                    <div><label className="input-label text-blue-600">糸渡し日</label><input type="date" className="form-input text-xs" value={formData.itowatashi_date} onChange={e=>setFormData({...formData, itowatashi_date: e.target.value})} /></div>
+                                    <div><label className="input-label text-red-400">締め上がり日 (完成時)</label><input type="date" className="form-input text-xs" value={formData.completion_date} onChange={e=>setFormData({...formData, completion_date: e.target.value})} /></div>
                                 </div>
 
                                 <label className="input-label">締め工賃 (¥)</label>
                                 <input type="number" className="form-input" value={formData.wage} onChange={e=>setFormData({...formData, wage: e.target.value})} />
 
                                 <label className="input-label">備考</label>
-                                <textarea className="form-input" rows="2" value={formData.note} onChange={e=>setFormData({...formData, note: e.target.value})}></textarea>
+                                <textarea className="form-input mb-4" rows="2" value={formData.note} onChange={e=>setFormData({...formData, note: e.target.value})}></textarea>
 
-                                <button onClick={handleSave} className="w-full bg-slate-800 text-white py-4 rounded-lg font-bold mt-6 shadow-xl active:scale-95 transition-transform">
-                                    {editingId ? "内容を更新する" : "新規保存する"}
+                                <button onClick={handleSave} className="w-full bg-slate-800 text-white py-4 rounded-lg font-bold shadow-xl active:bg-slate-700">
+                                    {editingId ? "内容を更新保存する" : "新規登録して保存"}
                                 </button>
-                                {editingId && (
-                                    <button onClick={()=>{setEditingId(null); setFormData(initialForm);}} className="w-full text-gray-500 mt-2 text-xs">キャンセル</button>
-                                )}
+                                {editingId && <button onClick={()=>{setEditingId(null); setFormData(initialForm);}} className="w-full py-2 text-xs text-gray-400 mt-2 underline">入力をキャンセル</button>}
                             </div>
                         )}
 
                         {tab === '履歴' && (
                             <div className="space-y-3">
-                                {records.map(r => (
+                                {records.length === 0 ? <p className="text-center text-gray-300 py-20">履歴がありません</p> : 
+                                records.map(r => (
                                     <div key={r.id} className="bg-white border rounded p-3 text-[11px] shadow-sm flex justify-between items-center">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-bold text-sm">{r.shime_name}</span>
-                                                <span className={`${r.difficultyColor} text-white px-1 rounded`}>{r.difficulty}</span>
+                                                <span className="font-bold text-sm text-slate-800">{r.shime_name}</span>
+                                                <span className={`${r.difficultyColor} text-white px-1 rounded text-[9px]`}>{r.difficulty}</span>
                                             </div>
-                                            <p className="text-gray-500">{r.gara_name} | {r.full_gara_type}</p>
-                                            <p className="text-gray-400">工賃: ¥{Number(r.wage).toLocaleString()}</p>
+                                            <p className="text-gray-500">{r.gara_name} ({r.itobetsu})</p>
+                                            <p className="text-gray-400">工賃: ¥{Number(r.wage || 0).toLocaleString()} / 渡し: {r.itowatashi_date}</p>
                                         </div>
-                                        <button onClick={()=>startEdit(r)} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-full font-bold border border-blue-100">
-                                            編集
-                                        </button>
+                                        <button onClick={()=>startEdit(r)} className="bg-blue-600 text-white px-3 py-2 rounded-lg font-bold ml-2">編集</button>
                                     </div>
                                 ))}
                             </div>
@@ -240,14 +257,14 @@
 
                         {tab === '工賃計算' && (
                             <div className="bg-blue-50 p-6 rounded-xl border border-blue-200">
-                                <h3 className="font-bold text-blue-900 mb-4 text-center">難易度別 平均工賃</h3>
+                                <h3 className="font-bold text-blue-900 mb-4 text-center">難易度別 平均工賃実績</h3>
                                 {['低', '中', '高'].map(level => {
-                                    const matching = records.filter(r => r.difficulty === level && r.wage);
+                                    const matching = records.filter(r => r.difficulty === level && r.wage && r.wage > 0);
                                     const avg = matching.length > 0 ? Math.round(matching.reduce((s, r) => s + Number(r.wage), 0) / matching.length) : 0;
                                     return (
-                                        <div key={level} className="flex justify-between items-center py-2 border-b border-blue-100">
+                                        <div key={level} className="flex justify-between items-center py-3 border-b border-blue-100 last:border-0">
                                             <span className="font-bold text-slate-700">【{level}】</span>
-                                            <span className="text-lg font-mono">¥ {avg.toLocaleString()}</span>
+                                            <span className="text-lg font-mono text-blue-800">¥ {avg.toLocaleString()}</span>
                                         </div>
                                     );
                                 })}
